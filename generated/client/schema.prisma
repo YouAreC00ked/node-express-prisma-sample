@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Vendor {
+  vendorId     Int      @id @default(autoincrement())
+  vendorName   String   @unique @db.VarChar(100)
+  contactEmail String?  @db.VarChar(255)
+  websiteUrl   String?  @db.VarChar(500)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamp
+
+  movieCodes MovieCode[]
+
+  @@map("vendors")
+}
+
+model Studio {
+  studioId          Int      @id @default(autoincrement())
+  studioName        String   @unique @db.VarChar(100)
+  redemptionBaseUrl String?  @db.VarChar(500)
+  createdAt         DateTime @default(now()) @db.Timestamp
+
+  movies     Movie[]
+  movieCodes MovieCode[]
+
+  @@map("studios")
+}
+
+model RedemptionPlatform {
+  platformId    Int     @id @default(autoincrement())
+  platformName  String  @unique @db.VarChar(50)
+  platformCode  String  @unique @db.VarChar(20)
+  redemptionUrl String? @db.VarChar(500)
+
+  availabilities    CodePlatformAvailability[]
+  validationHistory ValidationHistory[]
+  errorLogs         ErrorLog[]
+
+  @@map("redemption_platforms")
+}
+
+model Movie {
+  movieId        Int      @id @default(autoincrement())
+  title          String   @db.VarChar(500)
+  releaseYear    Int?
+  rating         String?  @db.VarChar(10)
+  quality        Quality?
+  runtimeMinutes Int?
+  imageUrl       String?  @db.VarChar(1000)
+  studioId       Int?
+  createdAt      DateTime @default(now()) @db.Timestamp
+
+  studio     Studio?     @relation(fields: [studioId], references: [studioId], onDelete: SetNull)
+  movieCodes MovieCode[] @relation("MovieToMovieCode")
+
+  @@unique([title, releaseYear])
+  @@index([title])
+  @@index([studioId])
+  @@map("movies")
+}
+
+model Customer {
+  customerId     Int     @id @default(autoincrement())
+  customerName   String? @db.VarChar(255)
+  email          String? @unique @db.VarChar(255)
+  phone          String? @db.VarChar(50)
+  totalPurchases Int     @default(0)
+  totalSpent     Decimal @default(0.00) @db.Decimal(10, 2)
+
+  sales Sale[]
+
+  @@map("customers")
+}
+
+model MovieCode {
+  codeId         Int        @id @default(autoincrement())
+  code           String     @unique @db.VarChar(100)
+  quality        Quality
+  status         CodeStatus @default(Pending)
+  isBundle       Boolean    @default(false)
+  bundleTitle    String?    @db.VarChar(500)
+  vendorId       Int
+  studioId       Int?
+  purchasePrice  Decimal?   @db.Decimal(10, 2)
+  sellingPrice   Decimal?   @db.Decimal(10, 2)
+  redemptionUrl  String?    @db.Text
+  isVerified     Boolean    @default(false)
+  lastVerifiedAt DateTime?  @db.Timestamp
+  vendorOrderId  String?    @db.VarChar(100)
+
+  movies Movie[] @relation("MovieToMovieCode")
+  vendor Vendor  @relation(fields: [vendorId], references: [vendorId], onDelete: Restrict)
+  studio Studio? @relation(fields: [studioId], references: [studioId], onDelete: SetNull)
+
+  sales             Sale?
+  availabilities    CodePlatformAvailability[]
+  validationHistory ValidationHistory[]
+  errorLogs         ErrorLog[]
+  recheckSchedules  RecheckSchedule[]
+
+  @@index([status])
+  @@index([quality])
+  @@index([vendorId])
+  @@index([isVerified])
+  @@index([lastVerifiedAt])
+  @@map("movie_codes")
+}
+
+model Sale {
+  saleId       Int      @id @default(autoincrement())
+  codeId       Int      @unique
+  customerId   Int?
+  saleDate     DateTime @default(now()) @db.Timestamp
+  salePrice    Decimal  @db.Decimal(10, 2)
+  purchaseCost Decimal? @db.Decimal(10, 2)
+  netProfit    Decimal  @db.Decimal(10, 2)
+
+  code     MovieCode @relation(fields: [codeId], references: [codeId], onDelete: Restrict)
+  customer Customer? @relation(fields: [customerId], references: [customerId], onDelete: SetNull)
+
+  @@index([saleDate])
+  @@index([customerId])
+  @@index([codeId])
+  @@map("sales")
+}
+
+model CodePlatformAvailability {
+  availabilityId Int     @id @default(autoincrement())
+  codeId         Int
+  platformId     Int
+  isValid        Boolean @default(true)
+
+  code     MovieCode          @relation(fields: [codeId], references: [codeId], onDelete: Cascade)
+  platform RedemptionPlatform @relation(fields: [platformId], references: [platformId], onDelete: Cascade)
+
+  @@unique([codeId, platformId])
+  @@index([codeId])
+  @@index([platformId])
+  @@map("code_platform_availability")
+}
+
+model ValidationHistory {
+  validationId     Int      @id @default(autoincrement())
+  codeId           Int
+  platformId       Int?
+  validationDate   DateTime @default(now()) @db.Timestamp
+  isValid          Boolean
+  validationMethod String?  @db.VarChar(50)
+
+  code     MovieCode?          @relation(fields: [codeId], references: [codeId], onDelete: Cascade)
+  platform RedemptionPlatform? @relation(fields: [platformId], references: [platformId], onDelete: SetNull)
+
+  @@index([codeId])
+  @@index([validationDate])
+  @@index([platformId])
+  @@map("validation_history")
+}
+
+model ErrorLog {
+  errorId      Int     @id @default(autoincrement())
+  codeId       Int?
+  errorType    String  @db.VarChar(50)
+  errorMessage String? @db.Text
+  platformId   Int?
+  resolved     Boolean @default(false)
+
+  code     MovieCode?          @relation(fields: [codeId], references: [codeId], onDelete: SetNull)
+  platform RedemptionPlatform? @relation(fields: [platformId], references: [platformId], onDelete: SetNull)
+
+  @@index([codeId])
+  @@index([resolved])
+  @@map("error_log")
+}
+
+model RecheckSchedule {
+  scheduleId    Int      @id @default(autoincrement())
+  codeId        Int
+  scheduledDate DateTime @db.Date
+  priority      Priority @default(Normal)
+  completed     Boolean  @default(false)
+
+  code MovieCode @relation(fields: [codeId], references: [codeId], onDelete: Cascade)
+
+  @@index([scheduledDate])
+  @@index([completed])
+  @@map("recheck_schedule")
+}
+
+model History {
+  historyId   Int      @id @default(autoincrement())
+  title       String   @db.VarChar(500)
+  action      String   @db.VarChar(500)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamp
+
+  @@map("history")
+}
+
+enum Quality {
+  FourK @map("4K")
+  HD
+  SD
+  UHD
+
+  @@map("quality")
+}
+
+enum CodeStatus {
+  Ready
+  OutOfStock @map("Out of Stock")
+  Pending
+  Sold
+  Invalid
+
+  @@map("status")
+}
+
+enum Priority {
+  Low
+  Normal
+  High
+  Urgent
+
+  @@map("priority")
+}
